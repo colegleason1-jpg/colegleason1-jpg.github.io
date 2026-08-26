@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>KILL GOD: THE REBELLION</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;background:#0a0505;overflow:hidden;font-family:Georgia,serif;
+    -webkit-user-select:none;user-select:none;touch-action:none;}
+  #game{position:relative;}
+  #ui{position:absolute;top:0;left:0;color:#e0c48c;padding:8px;font-size:13px;z-index:5;pointer-events:none;
+    text-shadow:0 0 4px #000;}
+  #joystick{position:absolute;left:20px;bottom:20px;width:120px;height:120px;border-radius:50%;
+    background:rgba(224,196,140,0.15);border:2px solid rgba(224,196,140,0.4);z-index:20;touch-action:none;}
+  #joystick-knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;
+    background:rgba(224,196,140,0.6);pointer-events:none;}
+  #atkBtn{position:absolute;right:25px;bottom:35px;width:90px;height:90px;border-radius:50%;
+    background:rgba(255,75,75,0.35);border:2px solid rgba(255,75,75,0.7);color:#fff;font-size:14px;
+    z-index:20;display:flex;align-items:center;justify-content:center;text-align:center;}
+  #overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(5,3,2,0.94);
+    color:#e0c48c;z-index:50;display:none;flex-direction:column;padding:16px;box-sizing:border-box;
+    overflow-y:auto;}
+  #overlay h2{margin:4px 0 10px;color:#ff8c4b;}
+  .row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #3a2a1a;
+    padding:8px 4px;font-size:13px;gap:8px;}
+  .row div.info{flex:1;}
+  button.act{background:#5a2a10;color:#e0c48c;border:1px solid #ff8c4b;border-radius:6px;
+    padding:8px 10px;font-size:13px;}
+  button.act:disabled{opacity:0.4;}
+  #closeOverlay{position:absolute;top:10px;right:14px;background:none;border:none;color:#e0c48c;
+    font-size:22px;z-index:60;}
+  #bars{position:absolute;top:0;right:0;width:220px;padding:8px;color:#fff;font-size:12px;z-index:5;
+    text-shadow:0 0 4px #000;}
+  .bar{height:10px;background:#222;border-radius:4px;overflow:hidden;margin-bottom:4px;}
+  .fill{height:100%;}
+  #hpfill{background:#ff4b4b;} #mpfill{background:#4b9bff;} #ehpfill{background:#ff8c4b;}
+  #menuBtns{position:absolute;top:8px;right:0;left:0;display:flex;justify-content:center;gap:6px;z-index:15;}
+  #menuBtns button{background:rgba(90,42,16,0.85);color:#e0c48c;border:1px solid #ff8c4b;border-radius:6px;
+    padding:5px 8px;font-size:11px;}
+  #log{position:absolute;bottom:130px;left:0;right:0;text-align:center;color:#fff;font-size:12px;
+    z-index:5;text-shadow:0 0 4px #000;pointer-events:none;padding:0 20px;}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="ui"></div>
+  <div id="bars"></div>
+  <div id="menuBtns">
+    <button onclick="openPanel('skills')">Skills</button>
+    <button onclick="openPanel('shop')">Shop</button>
+    <button onclick="openPanel('lore')">Lore</button>
+    <button onclick="openPanel('inv')">Inventory</button>
+  </div>
+  <div id="log"></div>
+  <div id="joystick"><div id="joystick-knob"></div></div>
+  <div id="atkBtn">FIGHT</div>
+  <div id="overlay"><button id="closeOverlay" onclick="closePanel()">✕</button><div id="overlayBody"></div></div>
+</div>
+<script>
+// =====================================================================
+// KILL GOD: THE REBELLION -- Full Phaser.js Port
+// Ported systems: weapons, armor, consumables, skill tree, enemy pools,
+// fixed bosses, milestone lore, leveling, gold/shop, turn combat.
+// =====================================================================
+
+const WEAPONS = {
+  "Rusty Sword": {atk:0, cost:0, req:1, desc:"A pitted blade. Better than fists, barely."},
+  "Iron Longsword": {atk:8, cost:60, req:3, desc:"Honest steel, honestly sharpened."},
+  "Werewolf Fang Blade": {atk:14, cost:140, req:8, desc:"Carved from a beast's own jaw."},
+  "Elven Moonsteel Rapier": {atk:20, cost:260, req:15, desc:"Stolen from a corrupted elf lord."},
+  "Hellforged Cleaver": {atk:32, cost:420, req:26, desc:"Quenched in the Devil's own blood."},
+  "Seraph-Slayer Glaive": {atk:46, cost:650, req:40, desc:"Forged to cut through holy light itself."},
+  "Apostle's Broken Cross": {atk:60, cost:900, req:58, desc:"A relic weapon, reforged as a weapon of war."},
+  "Excalibur, Inverted": {atk:78, cost:1300, req:74, desc:"The blade of kings, turned against Heaven."},
+  "Godsbane": {atk:100, cost:1900, req:90, desc:"There is only one thing left worth killing."}
+};
+
+const ARMORS = {
+  "Tattered Cloak": {hp:0, cost:0, req:1, desc:"Barely stops the wind."},
+  "Boiled Leather": {hp:30, cost:60, req:3, desc:"Cheap, but it's saved you before."},
+  "Chainmail Hauberk": {hp:60, cost:150, req:8, desc:"Heavy, reliable, dependable."},
+  "Elven Warded Plate": {hp:100, cost:280, req:15, desc:"Enchantments still flicker across it."},
+  "Demonhide Vestment": {hp:160, cost:430, req:26, desc:"A gift, sewn from the Devil's own retinue."},
+  "Choir-Breaker Plate": {hp:220, cost:660, req:40, desc:"Built to survive a hymn of judgement."},
+  "Martyr's Aegis": {hp:300, cost:900, req:58, desc:"Once worn by a saint. Not anymore."},
+  "Armor of the Fallen Choir": {hp:400, cost:1300, req:74, desc:"Feathers of a thousand cast-out angels."},
+  "Aegis of the Usurper": {hp:550, cost:1900, req:90, desc:"Made to withstand the wrath of Heaven's throne."}
+};
+
+const CONSUMABLES = {
+  "Minor Mana Potion": {type:"mp", amount:25, cost:20, desc:"Restores a modest pool of mana."},
+  "Health Draught": {type:"hp", amount:50, cost:25, desc:"Bitter, but it closes wounds fast."},
+  "Greater Elixir": {type:"full", amount:0, cost:90, desc:"Fully restores HP and MP."},
+  "Cleansing Herb": {type:"cleanse", amount:0, cost:35, desc:"Removes poison, stun, and burn."},
+  "Phoenix Down": {type:"revive", amount:0, cost:150, desc:"Cheats death once, mid-battle."}
+};
+
+const SKILLS = {
+  power_strike: {name:"Power Strike", branch:"melee", cost_sp:1, mp_cost:0, unlock_level:1, power_mult:1.6, desc:"A heavy blow relying on raw strength."},
+  whirlwind: {name:"Whirlwind Slash", branch:"melee", cost_sp:2, mp_cost:5, unlock_level:10, power_mult:2.1, desc:"Spin through your enemy's guard."},
+  executioners_arc: {name:"Executioner's Arc", branch:"melee", cost_sp:3, mp_cost:10, unlock_level:30, power_mult:2.8, desc:"A finishing strike that ignores half of enemy defense."},
+  arcane_bolt: {name:"Arcane Bolt", branch:"magic", cost_sp:1, mp_cost:8, unlock_level:1, power_mult:1.7, desc:"A basic bolt of raw arcane force."},
+  fireball: {name:"Fireball", branch:"magic", cost_sp:2, mp_cost:14, unlock_level:12, power_mult:2.3, burn:true, desc:"Explosive fire that leaves the enemy burning."},
+  mind_shatter: {name:"Mind Shatter", branch:"magic", cost_sp:3, mp_cost:20, unlock_level:35, power_mult:2.6, stun:true, desc:"Overloads the enemy's mind, has a chance to stun."},
+  hellfire_nova: {name:"Hellfire Nova", branch:"demonic", cost_sp:3, mp_cost:22, unlock_level:26, power_mult:3.2, burn:true, requires_pact:true, desc:"Unholy fire granted by your pact with the Devil."},
+  abyssal_grip: {name:"Abyssal Grip", branch:"demonic", cost_sp:4, mp_cost:18, unlock_level:45, power_mult:2.4, stun:true, requires_pact:true, desc:"Chains of shadow drag the enemy still."},
+  kings_ruin: {name:"The King's Ruin", branch:"demonic", cost_sp:6, mp_cost:35, unlock_level:70, power_mult:4.0, requires_pact:true, desc:"A cataclysmic strike, borrowed straight from Hell's throne."}
+};
+
+const ENEMY_POOLS = {
+  1: [
+    {name:"Goblin Scavenger", hp:38, atk:7},
+    {name:"Feral Werewolf", hp:52, atk:10},
+    {name:"Corrupted Elf Archer", hp:44, atk:9, ability:"poison"},
+    {name:"Dark Beast", hp:60, atk:11},
+    {name:"Bandit Cutthroat", hp:40, atk:8},
+    {name:"Restless Wraith", hp:50, atk:12, ability:"stun"},
+    {name:"Hill Troll", hp:75, atk:13},
+    {name:"Blood Cultist", hp:48, atk:9, ability:"burn"}
+  ],
+  2: [
+    {name:"Fairy of False Light", hp:140, atk:24, ability:"stun"},
+    {name:"Warlock of the Choir", hp:155, atk:26, ability:"burn"},
+    {name:"Seraphic Hound", hp:165, atk:28},
+    {name:"Cherub Swarm", hp:120, atk:22, ability:"poison"},
+    {name:"Fallen Watcher", hp:175, atk:27},
+    {name:"Hymnal Construct", hp:190, atk:30, ability:"stun"}
+  ],
+  3: [
+    {name:"Apostle's Zealous Phantom", hp:320, atk:46, ability:"burn"},
+    {name:"False Prophet", hp:300, atk:44, ability:"poison"},
+    {name:"Heavenly Templar", hp:360, atk:50},
+    {name:"Chorister of Judgement", hp:330, atk:47, ability:"stun"},
+    {name:"Inquisition Paladin", hp:370, atk:52, ability:"burn"}
+  ],
+  4: [
+    {name:"Throne Guardian", hp:620, atk:78, ability:"stun"},
+    {name:"Dominion Sentinel", hp:650, atk:82},
+    {name:"Principality Warbringer", hp:680, atk:85, ability:"burn"},
+    {name:"Virtue of the Last Choir", hp:700, atk:88, ability:"poison"},
+    {name:"Power, Unbound", hp:730, atk:92}
+  ]
+};
+
+const FIXED_BOSSES = {
+  25: {name:"The Arch-Demon of the Abyss", hp:500, atk:35, ability:"burn", intro:"A crack splits the sky. The Arch-Demon descends, curious rather than hostile."},
+  50: {name:"Archangel Gabriel", hp:1400, atk:60, ability:"stun", intro:"Gabriel's trumpet sounds. Lesser angels flock to his call."},
+  55: {name:"Apostle Peter's Phantom", hp:700, atk:62, ability:"stun", intro:"Peter's Phantom bars your path, radiant with borrowed authority."},
+  60: {name:"Apostle Paul, the Zealot Reborn", hp:780, atk:66, ability:"burn", intro:"Paul bars your path, radiant with borrowed authority."},
+  65: {name:"Apostle John, the Revelator", hp:860, atk:70, ability:"poison", intro:"John bars your path, radiant with borrowed authority."},
+  70: {name:"Apostle Judas, the Betrayer's Ghost", hp:940, atk:76, ability:null, intro:"Judas bars your path, radiant with borrowed authority."},
+  75: {name:"Jesus of Nazareth (The Son)", hp:4200, atk:100, ability:null, intro:"He does not raise a weapon. He does not need to."},
+  85: {name:"Archangel Michael, the Swordbearer", hp:2600, atk:95, ability:"burn", intro:"Michael descends in full battle-glory, blade already drawn."},
+  95: {name:"Archangel Raphael, the Healer", hp:2800, atk:90, ability:null, intro:"Raphael's light mends the world around him as he fights."},
+  100: {name:"GOD ALMIGHTY (The Creator)", hp:14000, atk:165, ability:"stun", intro:"Reality itself holds its breath. There is nowhere left to climb but here."}
+};
+
+const REGIONS = [
+  {id:1, name:"The Low Road & Blackwood Fen", faction:"mortal", color:0x2b1e12,
+   desc:"Muddy trade roads and rotting forest give way to the first camps of the outcast."},
+  {id:2, name:"The Choir Threshold", faction:"angelic", color:0x0a1420,
+   desc:"Where the mortal world thins and the first false-light of Heaven bleeds through."},
+  {id:3, name:"The Apostles' Approach", faction:"prophet", color:0x1a1608,
+   desc:"Old pilgrim roads turned into a gauntlet, guarded by the Twelve's ghosts."},
+  {id:4, name:"The Throneroom Ascent", faction:"heaven", color:0x141414,
+   desc:"Reality gets thin and strange this high. The Creator's throne waits at the top."}
+];
+
+const MILESTONE_EVENTS = {
+  10:{title:"📜 The First Lie", lore:"Heaven was never eternal. It was built, tier by tier, by something older that got tired of ruling and let its creation forget.", reward:{attr_points:1}},
+  20:{title:"📜 The Devil's Ledger", lore:"The Devil isn't rebelling out of love for mortals. He's paying off a debt to something that isn't in the Book at all.", reward:{gold:100}},
+  33:{title:"📜 The Choir's Silence", lore:"Angels don't sing out of joy. The hymn is load-bearing — it's the only thing keeping certain locked doors shut.", reward:{max_mp:15}},
+  47:{title:"📜 The Apostles' Doubt", lore:"At least one Apostle tried to warn the mortal world. His letters were burned. You are, unknowingly, finishing what he started.", reward:{skill_points:2}},
+  66:{title:"📜 The Son's Regret", lore:"He tends a garden of every mortal he couldn't save while alive. He isn't fighting you out of duty. He's tired, and doesn't know how to stop.", reward:{max_hp:25}},
+  88:{title:"📜 The Creator's First Draft", lore:"The first word God ever spoke wasn't 'light.' It was a question. Nobody, in all of eternity, ever answered it.", reward:{attr_points:2}},
+  // --- new lore added for this rebuild ---
+  40:{title:"📜 The Weight Between Worlds", lore:"A cracked bell, buried beneath the Choir Threshold, rings a note no mortal throat can make. It was cast the day the first rebellion — not yours — was crushed. You are not the first mortal to climb this far. You may not be the last, either.", reward:{gold:80}},
+  80:{title:"📜 What the Throne Remembers", lore:"Etched into the base of the Throneroom Ascent: every name of every angel who ever asked 'why.' The list is longer than the list of those who never asked at all.", reward:{max_hp:20, max_mp:10}}
+};
+
+function phaseForLevel(lvl){
+  if(lvl<=25) return 1;
+  if(lvl<=50) return 2;
+  if(lvl<=75) return 3;
+  return 4;
+}
+
+// =====================================================================
+// GAME STATE
+// =====================================================================
+function newGameState(){
+  return {
+    level:1, hp:100, maxHp:100, mp:50, maxMp:50,
+    baseAttack:15, baseMagic:20, gold:30, skillPoints:1,
+    demonAllied:false, weapon:"Rusty Sword", armor:"Tattered Cloak",
+    inventory:{"Minor Mana Potion":2, "Health Draught":2},
+    skillsUnlocked:[], attrPoints:0, phoenixUsed:false,
+    lorefound:{}, enemy:null, enemyStatus:{}, playerStatus:{}, inCombat:false
+  };
+}
+let gs = newGameState();
+
+function totalAttack(){ return gs.baseAttack + WEAPONS[gs.weapon].atk; }
+function totalMagic(){ return gs.baseMagic + (gs.demonAllied?10:0); }
+function totalMaxHp(){ return gs.maxHp + ARMORS[gs.armor].hp; }
+
+function getEnemyForLevel(lvl){
+  if(FIXED_BOSSES[lvl]){
+    const b = FIXED_BOSSES[lvl];
+    return {name:b.name, hp:b.hp, maxHp:b.hp, atk:b.atk, ability:b.ability, isBoss:true, intro:b.intro};
+  }
+  const phase = phaseForLevel(lvl);
+  const pool = ENEMY_POOLS[phase];
+  const t = pool[Math.floor(Math.random()*pool.length)];
+  const scale = 1 + lvl*0.045;
+  return {name:`Lvl ${lvl} ${t.name}`, hp:Math.floor(t.hp*scale), maxHp:Math.floor(t.hp*scale),
+    atk:Math.floor(t.atk*scale), ability:t.ability||null, isBoss:false};
+}
+
+function logMsg(msg){
+  const el = document.getElementById('log');
+  el.innerText = msg;
+}
+
+function updateBars(){
+  const e = gs.enemy;
+  document.getElementById('bars').innerHTML = `
+    <div>HP ${gs.hp}/${totalMaxHp()}</div>
+    <div class="bar"><div id="hpfill" class="fill" style="width:${Math.max(0,gs.hp/totalMaxHp()*100)}%"></div></div>
+    <div>MP ${gs.mp}/${gs.maxMp}</div>
+    <div class="bar"><div id="mpfill" class="fill" style="width:${Math.max(0,gs.mp/gs.maxMp*100)}%"></div></div>
+    ${e? `<div style="margin-top:6px">${e.name} — ${e.hp}/${e.maxHp}</div>
+    <div class="bar"><div id="ehpfill" class="fill" style="width:${Math.max(0,e.hp/e.maxHp*100)}%"></div></div>` : ''}
+    <div style="margin-top:6px">Lv.${gs.level} | Gold: ${gs.gold} | SP: ${gs.skillPoints}</div>
+  `;
+}
+
+function checkLevelUp(){
+  if(gs.level < 100){
+    gs.level += 1;
+    gs.skillPoints += 1;
+    gs.hp = totalMaxHp();
+    gs.mp = gs.maxMp;
+    if(MILESTONE_EVENTS[gs.level] && !gs.lorefound[gs.level]){
+      const ev = MILESTONE_EVENTS[gs.level];
+      gs.lorefound[gs.level] = true;
+      if(ev.reward.gold) gs.gold += ev.reward.gold;
+      if(ev.reward.attr_points) gs.attrPoints += ev.reward.attr_points;
+      if(ev.reward.skill_points) gs.skillPoints += ev.reward.skill_points;
+      if(ev.reward.max_hp) gs.maxHp += ev.reward.max_hp;
+      if(ev.reward.max_mp) gs.maxMp += ev.reward.max_mp;
+      setTimeout(()=> openPanel('lore', ev), 400);
+    }
+    return true;
+  }
+  return false;
+}
+
+// =====================================================================
+// COMBAT
+// =====================================================================
+function startEncounter(){
+  if(gs.inCombat) return;
+  gs.inCombat = true;
+  gs.enemy = getEnemyForLevel(gs.level);
+  gs.enemyStatus = {};
+  gs.playerStatus = {};
+  gs.phoenixUsed = false;
+  document.getElementById('atkBtn').style.display='flex';
+  logMsg(gs.enemy.intro ? gs.enemy.intro : `A ${gs.enemy.name} attacks!`);
+  updateBars();
+  openPanel('combat');
+}
+
+function playerAttack(kind, skillId){
+  if(!gs.inCombat) return;
+  const e = gs.enemy;
+  let dmg = 0, msg = "";
+  if(kind === 'melee'){
+    dmg = totalAttack() + Math.floor(Math.random()*8);
+    msg = `You strike for ${dmg} damage!`;
+  } else if(kind === 'magic'){
+    if(gs.mp < 8){ logMsg("Not enough mana!"); return; }
+    gs.mp -= 8;
+    dmg = Math.floor(totalMagic()*1.2) + Math.floor(Math.random()*6);
+    msg = `Arcane bolt hits for ${dmg} damage!`;
+  } else if(kind === 'skill'){
+    const s = SKILLS[skillId];
+    if(gs.skillPoints !== undefined && gs.mp < s.mp_cost){ logMsg("Not enough mana!"); return; }
+    gs.mp -= s.mp_cost;
+    const base = s.branch === 'melee' ? totalAttack() : totalMagic();
+    dmg = Math.floor(base * s.power_mult);
+    msg = `${s.name} deals ${dmg} damage!`;
+    if(s.burn) gs.enemyStatus.burn = 3;
+    if(s.stun && Math.random()<0.4) gs.enemyStatus.stun = 2;
+  } else if(kind === 'item'){
+    useItem(skillId);
+    return;
+  }
+  e.hp -= dmg;
+  logMsg(msg);
+  updateBars();
+  if(e.hp <= 0){ return winCombat(); }
+  setTimeout(enemyTurn, 700);
+}
+
+function enemyTurn(){
+  const e = gs.enemy;
+  if(gs.enemyStatus.stun && gs.enemyStatus.stun > 0){
+    gs.enemyStatus.stun -= 1;
+    logMsg(`${e.name} is stunned and cannot act!`);
+    updateBars();
+    return;
+  }
+  if(gs.enemyStatus.burn && gs.enemyStatus.burn > 0){
+    e.hp -= 12; gs.enemyStatus.burn -= 1;
+    if(e.hp<=0){ return winCombat(); }
+  }
+  let dmg = Math.max(1, e.atk - Math.floor(ARMORS[gs.armor].hp/10));
+  gs.hp -= dmg;
+  let extra = "";
+  if(e.ability === 'poison' && Math.random()<0.3){ gs.playerStatus.poison=3; extra=" You've been poisoned!"; }
+  if(e.ability === 'burn' && Math.random()<0.3){ gs.playerStatus.burn=2; extra=" You're burning!"; }
+  if(gs.playerStatus.poison>0){ gs.hp -= 6; gs.playerStatus.poison-=1; extra+=" Poison festers."; }
+  logMsg(`${e.name} hits you for ${dmg}.${extra}`);
+  updateBars();
+  if(gs.hp <= 0){
+    if(gs.inventory["Phoenix Down"] > 0 && !gs.phoenixUsed){
+      gs.inventory["Phoenix Down"] -= 1;
+      gs.phoenixUsed = true;
+      gs.hp = Math.floor(totalMaxHp()*0.4);
+      logMsg("Phoenix Down saves you from death!");
+      updateBars();
+    } else {
+      loseCombat();
+    }
+  }
+}
+
+function useItem(name){
+  const item = CONSUMABLES[name];
+  if(!gs.inventory[name] || gs.inventory[name]<=0) return;
+  gs.inventory[name] -= 1;
+  if(item.type==='hp') gs.hp = Math.min(totalMaxHp(), gs.hp+item.amount);
+  if(item.type==='mp') gs.mp = Math.min(gs.maxMp, gs.mp+item.amount);
+  if(item.type==='full'){ gs.hp = totalMaxHp(); gs.mp = gs.maxMp; }
+  if(item.type==='cleanse') gs.playerStatus = {};
+  logMsg(`Used ${name}.`);
+  updateBars();
+  if(gs.inCombat) setTimeout(enemyTurn, 600);
+}
+
+function winCombat(){
+  gs.inCombat = false;
+  const goldGain = gs.enemy.isBoss ? 200 : 20 + gs.level*2;
+  gs.gold += goldGain;
+  logMsg(`Victory! ${gs.enemy.name} falls. (+${goldGain} gold)`);
+  gs.enemy = null;
+  document.getElementById('atkBtn').style.display='none';
+  checkLevelUp();
+  updateBars();
+  setTimeout(closePanel, 1200);
+}
+
+function loseCombat(){
+  gs.inCombat = false;
+  gs.hp = Math.floor(totalMaxHp()*0.3);
+  gs.enemy = null;
+  logMsg("You have fallen... but crawl back to the Sanctuary, bloodied.");
+  document.getElementById('atkBtn').style.display='none';
+  updateBars();
+  setTimeout(closePanel, 1500);
+}
+
+// =====================================================================
+// UI PANELS
+// =====================================================================
+function openPanel(kind, extra){
+  const ov = document.getElementById('overlay');
+  const body = document.getElementById('overlayBody');
+  ov.style.display = 'flex';
+  if(kind === 'combat'){
+    body.innerHTML = `<h2>⚔️ ${gs.enemy.name}</h2>
+      <div class="row"><div class="info">Melee Strike</div><button class="act" onclick="playerAttack('melee')">Attack</button></div>
+      <div class="row"><div class="info">Arcane Bolt (8 MP)</div><button class="act" onclick="playerAttack('magic')">Cast</button></div>
+      ${Object.entries(SKILLS).filter(([id])=>gs.skillsUnlocked.includes(id)).map(([id,s])=>`
+        <div class="row"><div class="info"><b>${s.name}</b> (${s.mp_cost} MP)</div>
+        <button class="act" onclick="playerAttack('skill','${id}')">Use</button></div>`).join('')}
+      <h2 style="margin-top:10px">Items</h2>
+      ${Object.entries(gs.inventory).filter(([,q])=>q>0).map(([n,q])=>`
+        <div class="row"><div class="info">${n} x${q}</div>
+        <button class="act" onclick="playerAttack('item','${n}')">Use</button></div>`).join('') || '<p>No items.</p>'}
+      <button class="act" style="margin-top:12px" onclick="closePanel()">Flee (return later)</button>`;
+  } else if(kind === 'skills'){
+    body.innerHTML = `<h2>🌟 Skill Tree (SP: ${gs.skillPoints})</h2>` +
+      ['melee','magic','demonic'].map(branch => `
+        <h3>${branch === 'melee' ? '⚔️ Melee' : branch==='magic' ? '✨ Arcane' : '🔥 Demonic (pact req.)'}</h3>
+        ${Object.entries(SKILLS).filter(([,s])=>s.branch===branch).map(([id,s])=>{
+          const unlocked = gs.skillsUnlocked.includes(id);
+          const lvlOk = gs.level >= s.unlock_level;
+          const pactOk = !s.requires_pact || gs.demonAllied;
+          const canLearn = lvlOk && pactOk && gs.skillPoints>=s.cost_sp && !unlocked;
+          return `<div class="row"><div class="info"><b>${s.name}</b> — ${s.desc} (${s.cost_sp} SP, Lv.${s.unlock_level})</div>
+          <button class="act" ${!canLearn?'disabled':''} onclick="learnSkill('${id}')">${unlocked?'Learned':'Learn'}</button></div>`;
+        }).join('')}
+      ).join('');
+  } else if(kind === 'shop'){
+    body.innerHTML = `<h2>🛒 Sanctuary Shop (Gold: ${gs.gold})</h2>
+      <h3>Weapons</h3>
+      ${Object.entries(WEAPONS).map(([n,d])=>{
+        const owned = gs.weapon===n, locked = gs.level<d.req;
+        return `<div class="row"><div class="info"><b>${n}</b> ATK+${d.atk} — ${d.cost}g, Req Lv.${d.req}</div>
+        <button class="act" ${owned||locked?'disabled':''} onclick="buyWeapon('${n}')">${owned?'Equipped':'Buy'}</button></div>`;
+      }).join('')}
+      <h3>Armor</h3>
+      ${Object.entries(ARMORS).map(([n,d])=>{
+        const owned = gs.armor===n, locked = gs.level<d.req;
+        return `<div class="row"><div class="info"><b>${n}</b> HP+${d.hp} — ${d.cost}g, Req Lv.${d.req}</div>
+        <button class="act" ${owned||locked?'disabled':''} onclick="buyArmor('${n}')">${owned?'Equipped':'Buy'}</button></div>`;
+      }).join('')}
+      <h3>Consumables</h3>
+      ${Object.entries(CONSUMABLES).map(([n,d])=>`
+        <div class="row"><div class="info"><b>${n}</b> — ${d.desc} (${d.cost}g)</div>
+        <button class="act" onclick="buyItem('${n}')">Buy</button></div>`).join('')}
+      <h3>Rest</h3>
+      <div class="row"><div class="info">Full heal, 20 gold</div><button class="act" onclick="restHeal()">Rest</button></div>`;
+  } else if(kind === 'inv'){
+    body.innerHTML = `<h2>🎒 Inventory</h2>` +
+      (Object.entries(gs.inventory).filter(([,q])=>q>0).map(([n,q])=>
+        `<div class="row"><div class="info">${n} x${q}</div></div>`).join('') || '<p>Empty.</p>');
+  } else if(kind === 'lore'){
+    const found = Object.entries(MILESTONE_EVENTS).filter(([lvl])=>gs.lorefound[lvl]);
+    if(extra){
+      body.innerHTML = `<h2>${extra.title}</h2><p>${extra.lore}</p>
+        <button class="act" onclick="openPanel('lore')">See all secrets</button>`;
+    } else {
+      body.innerHTML = `<h2>📜 Secrets & Lore (${found.length}/${Object.keys(MILESTONE_EVENTS).length})</h2>` +
+        (found.map(([,ev])=>`<p><b>${ev.title}</b><br>${ev.lore}</p><hr>`).join('') || '<p>The road hides more than monsters. Keep climbing.</p>');
+    }
+  }
+}
+function closePanel(){ document.getElementById('overlay').style.display='none'; }
+
+function learnSkill(id){
+  const s = SKILLS[id];
+  if(gs.skillPoints>=s.cost_sp && !gs.skillsUnlocked.includes(id)){
+    gs.skillPoints -= s.cost_sp;
+    gs.skillsUnlocked.push(id);
+    openPanel('skills');
+  }
+}
+function buyWeapon(n){ const d=WEAPONS[n]; if(gs.gold>=d.cost){ gs.gold-=d.cost; gs.weapon=n; openPanel('shop'); updateBars(); } }
+function buyArmor(n){ const d=ARMORS[n]; if(gs.gold>=d.cost){ gs.gold-=d.cost; gs.armor=n; openPanel('shop'); updateBars(); } }
+function buyItem(n){ const d=CONSUMABLES[n]; if(gs.gold>=d.cost){ gs.gold-=d.cost; gs.inventory[n]=(gs.inventory[n]||0)+1; openPanel('shop'); updateBars(); } }
+function restHeal(){ if(gs.gold>=20){ gs.gold-=20; gs.hp=totalMaxHp(); gs.mp=gs.maxMp; gs.playerStatus={}; openPanel('shop'); updateBars(); } }
+
+// =====================================================================
+// PHASER WORLD SCENE
+// =====================================================================
+class WorldScene extends Phaser.Scene {
+  constructor(){ super("WorldScene"); }
+  preload(){
+    this.load.image('player', 'https://labs.phaser.io/assets/sprites/phaser-dude.png');
+  }
+  create(){
+    this.currentRegion = REGIONS[0];
+    this.cameras.main.setBackgroundColor(this.currentRegion.color);
+    this.player = this.physics.add.sprite(400, 300, 'player');
+    this.player.setCollideWorldBounds(true);
+    this.physics.world.setBounds(0,0,3200,2400);
+    this.cameras.main.setBounds(0,0,3200,2400);
+    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+
+    this.regionZones = [];
+    REGIONS.forEach((r,i)=>{
+      const zx = 400 + i*700, zy = 300 + (i%2)*600;
+      this.add.rectangle(zx, zy, 500, 400, r.color, 0.35);
+      this.add.text(zx-100, zy-220, r.name, {fontSize:'16px', color:'#e0c48c'});
+      this.regionZones.push({rect:new Phaser.Geom.Rectangle(zx-250,zy-200,500,400), region:r});
+    });
+
+    this.enemySprites = this.physics.add.group();
+    for(let i=0;i<14;i++){
+      const ex = Phaser.Math.Between(100,3100), ey = Phaser.Math.Between(100,2300);
+      const dot = this.physics.add.sprite(ex,ey,'player').setTint(0xff4b4b).setScale(0.55);
+      dot.regionIndex = Math.min(3, Math.floor(ex/800));
+      this.enemySprites.add(dot);
+    }
+    this.physics.add.overlap(this.player, this.enemySprites, (p,e)=>{
+      if(!gs.inCombat){ e.destroy(); startEncounter(); }
+    });
+
+    this.uiDiv = document.getElementById('ui');
+    this.joyVec = {x:0,y:0};
+    setupJoystick(this);
+  }
+  update(){
+    const speed = 220;
+    this.player.setVelocity(this.joyVec.x*speed, this.joyVec.y*speed);
+    let region = this.currentRegion;
+    for(const z of this.regionZones){
+      if(Phaser.Geom.Rectangle.Contains(z.rect, this.player.x, this.player.y)){ region=z.region; break; }
+    }
+    this.currentRegion = region;
+    if(!gs.inCombat){
+      this.uiDiv.innerHTML = `<b>${region.name}</b><br>${region.desc}`;
+    }
+  }
+}
+
+function setupJoystick(scene){
+  const joy = document.getElementById('joystick');
+  const knob = document.getElementById('joystick-knob');
+  let active = false, start = {x:0,y:0};
+  const reset = ()=>{ knob.style.left='35px'; knob.style.top='35px'; scene.joyVec={x:0,y:0}; };
+  joy.addEventListener('touchstart', e=>{
+    active=true; const t=e.touches[0]; const r=joy.getBoundingClientRect();
+    start={x:r.left+r.width/2, y:r.top+r.height/2};
+  });
+  joy.addEventListener('touchmove', e=>{
+    if(!active) return;
+    const t = e.touches[0];
+    let dx = t.clientX-start.x, dy = t.clientY-start.y;
+    const max = 45;
+    const dist = Math.min(max, Math.hypot(dx,dy));
+    const ang = Math.atan2(dy,dx);
+    const kx = Math.cos(ang)*dist, ky = Math.sin(ang)*dist;
+    knob.style.left = (35+kx)+'px'; knob.style.top = (35+ky)+'px';
+    scene.joyVec = {x:Math.cos(ang)*(dist/max), y:Math.sin(ang)*(dist/max)};
+    e.preventDefault();
+  }, {passive:false});
+  joy.addEventListener('touchend', ()=>{ active=false; reset(); });
+
+  // Keyboard fallback for desktop testing
+  const keys = {};
+  window.addEventListener('keydown', e=>keys[e.key]=true);
+  window.addEventListener('keyup', e=>keys[e.key]=false);
+  scene.events.on('update', ()=>{
+    if(active) return;
+    let x=0,y=0;
+    if(keys['ArrowLeft']||keys['a']) x-=1;
+    if(keys['ArrowRight']||keys['d']) x+=1;
+    if(keys['ArrowUp']||keys['w']) y-=1;
+    if(keys['ArrowDown']||keys['s']) y+=1;
+    scene.joyVec = {x,y};
+  });
+}
+
+document.getElementById('atkBtn').addEventListener('click', ()=>{
+  if(gs.inCombat) openPanel('combat');
+});
+document.getElementById('atkBtn').style.display='none';
+
+const config = {
+  type: Phaser.AUTO,
+  width: Math.min(window.innerWidth, 900),
+  height: Math.min(window.innerHeight, 600),
+  parent: 'game',
+  physics: { default:'arcade', arcade:{ debug:false } },
+  scene: [WorldScene]
+};
+new Phaser.Game(config);
+updateBars();
+</script>
+</body>
+</html>
